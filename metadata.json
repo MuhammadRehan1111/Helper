@@ -1,0 +1,13 @@
+{
+  "name": "Helper",
+  "description": "A local services marketplace connecting skilled workers with community members for home maintenance, repairs, and technical services.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "REAL-TIME_MULTIPLE_AGENT_ORCHESTRATION",
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
