@@ -274,9 +274,25 @@ export default function Jobs() {
               {currentUser?.role === 'worker' && <p className="text-[10px] text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100">PLATFORM POLICY: Ranking -0.2 drop applied for cancellations.</p>}
             </div>
 
-            <Button variant="destructive" className="w-full h-12 rounded-xl font-bold" onClick={handleCancelSubmit}>
-              Confirm Cancellation
-            </Button>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                className="flex-1 h-12 rounded-xl font-bold" 
+                onClick={() => {
+                  setCancelJobId(null);
+                  setCancelReason('');
+                }}
+              >
+                Go Back
+              </Button>
+              <Button 
+                variant="destructive" 
+                className="flex-1 h-12 rounded-xl font-bold" 
+                onClick={handleCancelSubmit}
+              >
+                Confirm
+              </Button>
+            </div>
           </div>
         </div>
       )}

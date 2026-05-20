@@ -35,6 +35,19 @@ export interface Worker {
   avatar: string;
   bio: string;
   gallery: string[];
+  // New fields
+  city?: string;
+  lat?: number;
+  lng?: number;
+  phone?: string;
+  completedJobs?: number;
+}
+
+export interface CartItem {
+  workerId: string;
+  date: string;
+  time: string;
+  address: string;
 }
 
 export interface Job {
@@ -42,7 +55,7 @@ export interface Job {
   workerId: string;
   userId: string;
   title: string;
-  status: 'pending' | 'confirmed' | 'accepted' | 'rejected' | 'in_progress' | 'completed' | 'disputed' | 'reviewed' | 'provider_assigned' | 'on_the_way' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'accepted' | 'rejected' | 'in_progress' | 'completed' | 'disputed' | 'reviewed' | 'provider_assigned' | 'on_the_way' | 'cancelled' | 'refunded';
   date: string;
   price?: number;
   promoCode?: string;
@@ -53,6 +66,7 @@ export interface Job {
   estimatedArrival?: string;
   cancellationReason?: string;
   cancelledBy?: 'user' | 'worker';
+  disputeReason?: string;
 }
 
 export interface Review {
@@ -92,5 +106,5 @@ export interface AiRequest {
 export interface ToastMessage {
   id: string;
   message: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'warning';
 }

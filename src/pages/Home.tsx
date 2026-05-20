@@ -13,9 +13,21 @@ import { mockCategories } from '@/lib/mockData';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return parseFloat((R * c).toFixed(1));
+}
+
 export default function Home() {
   const navigate = useNavigate();
-  const { workers, currentUser, setCurrentAiRequest, showToast } = useAppContext();
+  const { workers, setWorkers, currentUser, setCurrentAiRequest, showToast, t } = useAppContext();
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(!navigator.onLine);
   const [aiPrompt, setAiPrompt] = useState('');
@@ -23,8 +35,17 @@ export default function Home() {
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const recognitionRef = React.useRef<any>(null);
-  const [location, setLocation] = useState(currentUser?.savedAddresses?.[0]?.address || 'Islamabad, Pakistan');
-  const locationLabel = currentUser?.savedAddresses?.[0]?.label || 'Current Location';
+  
+  const [location, setLocation] = useState(() => {
+    return localStorage.getItem('user_city_address') || currentUser?.savedAddresses?.[0]?.address || 'Islamabad, Pakistan';
+  });
+  const [locationLabel, setLocationLabel] = useState('Current Location');
+  const [showCitySelector, setShowCitySelector] = useState(false);
+  const [selectedCity, setSelectedCity] = useState<'Karachi' | 'Lahore' | 'Islamabad'>(() => {
+    return (localStorage.getItem('user_selected_city') as any) || 'Islamabad';
+  });
+  const [voiceResponse, setVoiceResponse] = useState<string | null>(null);
+
 
   const handleLocationChange = () => {
     navigate('/addresses');
@@ -83,20 +104,54 @@ export default function Home() {
         recognitionRef.current = null;
       };
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = async (event: any) => {
         const transcript = event.results[0][0].transcript;
         setAiPrompt(transcript);
-        showToast('Processing your request...', 'success');
+        showToast('Processing voice...', 'info');
         
-        // Auto submit if transcript is clear
-        if (transcript.length > 5) {
-          setTimeout(() => {
+        try {
+          const res = await fetch('/api/ai/voice-agent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: transcript })
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            const reply = data.response;
+            setVoiceResponse(reply);
+            
+            if ('speechSynthesis' in window) {
+              const utterance = new SpeechSynthesisUtterance(reply);
+              const isUrdu = /[\u0600-\u06FF]/.test(reply);
+              utterance.lang = isUrdu ? 'ur-PK' : 'en-US';
+              utterance.rate = 1.0;
+              window.speechSynthesis.cancel();
+              window.speechSynthesis.speak(utterance);
+            }
+            
+            setTimeout(() => {
+              setVoiceResponse(null);
+              setCurrentAiRequest({
+                id: Math.random().toString(36).substr(2, 9),
+                text: transcript
+              });
+              navigate('/ai-processing');
+            }, 3500);
+          } else {
             setCurrentAiRequest({
               id: Math.random().toString(36).substr(2, 9),
               text: transcript
             });
             navigate('/ai-processing');
-          }, 1000);
+          }
+        } catch (err) {
+          console.error('Voice agent fetch error:', err);
+          setCurrentAiRequest({
+            id: Math.random().toString(36).substr(2, 9),
+            text: transcript
+          });
+          navigate('/ai-processing');
         }
       };
 
@@ -118,42 +173,113 @@ export default function Home() {
     navigate('/ai-processing');
   };
 
+  const updateWorkerDistances = useCallback((lat: number, lng: number) => {
+    setWorkers(prev => {
+      const updated = prev.map(w => {
+        if (w.lat && w.lng) {
+          const dist = haversineDistance(lat, lng, w.lat, w.lng);
+          return { ...w, distance: dist };
+        }
+        return w;
+      });
+      return updated;
+    });
+  }, [setWorkers]);
+
+  const selectCityManually = useCallback((city: 'Karachi' | 'Lahore' | 'Islamabad') => {
+    const centers = {
+      Karachi: { lat: 24.8607, lng: 67.0011 },
+      Lahore: { lat: 31.5204, lng: 74.3587 },
+      Islamabad: { lat: 33.6844, lng: 73.0479 }
+    };
+    const center = centers[city];
+    setSelectedCity(city);
+    localStorage.setItem('user_selected_city', city);
+    setLocationLabel('City Center');
+    setLocation(`${city}, Pakistan`);
+    localStorage.setItem('user_city_address', `${city}, Pakistan`);
+    updateWorkerDistances(center.lat, center.lng);
+    setShowCitySelector(false);
+  }, [updateWorkerDistances]);
+
   useEffect(() => {
-  const handleOnline = () => setOffline(false);
-  const handleOffline = () => setOffline(true);
+    const handleOnline = () => setOffline(false);
+    const handleOffline = () => setOffline(true);
 
-  const beforeInstallPrompt = (e: any) => {
-    e.preventDefault();
-    setInstallPrompt(e);
-    setShowInstallBanner(true);
-  };
+    const beforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowInstallBanner(true);
+    };
 
-  window.addEventListener('online', handleOnline);
-  window.addEventListener('offline', handleOffline);
-  window.addEventListener('beforeinstallprompt', beforeInstallPrompt);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('beforeinstallprompt', beforeInstallPrompt);
 
-  // iOS detection for Add to Home Screen toast
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-  const isInStandalone = ('standalone' in navigator && (navigator as any).standalone) || window.matchMedia('(display-mode: standalone)').matches;
-  if (isIOS && !isInStandalone) {
-    showToast('Share button dabao → Add to Home Screen', 'info');
-  }
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    const isInStandalone = ('standalone' in navigator && (navigator as any).standalone) || window.matchMedia('(display-mode: standalone)').matches;
+    if (isIOS && !isInStandalone) {
+      showToast('Share button dabao → Add to Home Screen', 'info');
+    }
 
-  // Simulate API loading
-  const timer = setTimeout(() => {
-    setLoading(false);
-  }, 1000);
+    // Geolocation detection
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setLocationLabel('Live Location');
+          setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+          localStorage.setItem('user_city_address', `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+          
+          // Determine which city center is closest to automatically set selectedCity
+          const centers = {
+            Karachi: { lat: 24.8607, lng: 67.0011 },
+            Lahore: { lat: 31.5204, lng: 74.3587 },
+            Islamabad: { lat: 33.6844, lng: 73.0479 }
+          };
+          let nearestCity: 'Karachi' | 'Lahore' | 'Islamabad' = 'Islamabad';
+          let minDist = Infinity;
+          Object.entries(centers).forEach(([cityName, coords]) => {
+            const dist = haversineDistance(latitude, longitude, coords.lat, coords.lng);
+            if (dist < minDist) {
+              minDist = dist;
+              nearestCity = cityName as any;
+            }
+          });
+          setSelectedCity(nearestCity);
+          localStorage.setItem('user_selected_city', nearestCity);
+          
+          updateWorkerDistances(latitude, longitude);
+          setLoading(false);
+        },
+        (error) => {
+          console.log('Geolocation error, opening city selector:', error);
+          setShowCitySelector(true);
+          setLoading(false);
+        }
+      );
+    } else {
+      setShowCitySelector(true);
+      setLoading(false);
+    }
 
-  return () => {
-    window.removeEventListener('online', handleOnline);
-    window.removeEventListener('offline', handleOffline);
-    window.removeEventListener('beforeinstallprompt', beforeInstallPrompt);
-    clearTimeout(timer);
-  };
-}, []);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('beforeinstallprompt', beforeInstallPrompt);
+    };
+  }, [updateWorkerDistances]);
   
-  const topRated = workers.filter(w => w.rating >= 4.5);
-  const availableNow = workers.filter(w => w.available);
+  const cityFilteredWorkers = workers.filter(w => w.city === selectedCity);
+  const sortedCityWorkers = [...cityFilteredWorkers].sort((a, b) => {
+    if (a.distance !== b.distance) {
+      return a.distance - b.distance;
+    }
+    return b.rating - a.rating;
+  });
+
+  const topRated = sortedCityWorkers.filter(w => w.rating >= 4.5);
+  const availableNow = sortedCityWorkers.filter(w => w.available);
 
   if (offline) {
     return (
@@ -368,6 +494,39 @@ export default function Home() {
           ))}
         </div>
       </section>
+    {voiceResponse && (
+        <div className="fixed inset-x-6 bottom-24 bg-primary text-primary-foreground p-5 rounded-3xl shadow-2xl z-50 flex items-center gap-4 animate-bounce">
+          <Mic className="w-8 h-8 shrink-0 text-white animate-pulse" />
+          <div className="flex-1">
+            <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">Voice Assistant</span>
+            <p className="text-base font-bold leading-snug">{voiceResponse}</p>
+          </div>
+        </div>
+      )}
+
+      {showCitySelector && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <div className="bg-card w-full max-w-sm rounded-[2.5rem] p-6 shadow-2xl space-y-6 border text-center">
+            <div className="space-y-2">
+              <span className="text-3xl">📍</span>
+              <h3 className="text-xl font-black">Select Your City</h3>
+              <p className="text-xs text-muted-foreground">Location permission is required or you can manually select your city to search nearby helpers:</p>
+            </div>
+            
+            <div className="flex flex-col gap-3">
+              {(['Karachi', 'Lahore', 'Islamabad'] as const).map(city => (
+                <button
+                  key={city}
+                  onClick={() => selectCityManually(city)}
+                  className={`w-full py-4 rounded-2xl font-bold text-sm border transition-all active:scale-[0.98] ${selectedCity === city ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary/40 hover:bg-secondary border-border/50'}`}
+                >
+                  {city}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

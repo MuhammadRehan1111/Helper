@@ -15,6 +15,7 @@ import SavedAddresses from './pages/SavedAddresses';
 import Favorites from './pages/Favorites';
 import BookWorker from './pages/BookWorker';
 import ChatRoom from './pages/ChatRoom';
+import Cart from './pages/Cart';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Splash from './pages/Splash';
@@ -86,6 +87,7 @@ export default function App() {
               <Route path="/worker/:id" element={<ProtectedRoute><WorkerProfile /></ProtectedRoute>} />
               <Route path="/book/:id" element={<ProtectedRoute role="user"><BookWorker /></ProtectedRoute>} />
               <Route path="/chat/:id" element={<ProtectedRoute><ChatRoom /></ProtectedRoute>} />
+              <Route path="/cart" element={<ProtectedRoute role="user"><Cart /></ProtectedRoute>} />
             </Routes>
           </Router>
         </div>

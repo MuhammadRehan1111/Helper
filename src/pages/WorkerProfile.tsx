@@ -1,14 +1,14 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppContext } from '@/lib/AppContext';
-import { ArrowLeft, Star, CheckCircle, ShieldCheck, MessageSquare, Heart, Zap, BadgeCheck } from 'lucide-react';
+import { ArrowLeft, Star, CheckCircle, ShieldCheck, MessageSquare, Heart, Zap, BadgeCheck, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export default function WorkerProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { workers } = useAppContext();
+  const { workers, addToCart, showToast, currentUser } = useAppContext();
   
   const worker = workers.find(w => w.id === id);
   const handleBack = () => {
@@ -200,12 +200,29 @@ export default function WorkerProfile() {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto p-6 bg-white/80 backdrop-blur-xl border-t shadow-[0_-20px_50px_rgba(0,0,0,0.06)] pb-safe z-50 rounded-t-[3rem]">
-        <div className="flex gap-4">
-          <Button variant="outline" size="icon" className="h-16 w-16 shrink-0 rounded-3xl border-2 hover:bg-slate-50 transition-all active:scale-90" onClick={() => navigate(`/chat/${worker.id}`)}>
-            <MessageSquare className="w-6 h-6 text-primary" />
+        <div className="flex gap-2">
+          <Button variant="outline" size="icon" className="h-16 w-14 shrink-0 rounded-3xl border-2 hover:bg-slate-50 transition-all active:scale-90" onClick={() => navigate(`/chat/${worker.id}`)}>
+            <MessageSquare className="w-5 h-5 text-primary" />
           </Button>
           <Button 
-            className="flex-1 h-16 rounded-3xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all" 
+            variant="outline" 
+            className="h-16 px-4 rounded-3xl font-black text-xs uppercase tracking-widest border-2 flex items-center gap-1.5 hover:bg-slate-50 transition-all active:scale-[0.98]"
+            onClick={() => {
+              addToCart({
+                workerId: worker.id,
+                date: new Date().toISOString().split('T')[0],
+                time: '10:00',
+                address: currentUser?.savedAddresses?.[0]?.address || 'Standard Location'
+              });
+              showToast('Added to Cart!', 'success');
+              navigate('/cart');
+            }}
+          >
+            <ShoppingCart className="w-4 h-4 text-primary" />
+            Cart
+          </Button>
+          <Button 
+            className="flex-1 h-16 rounded-3xl font-black text-xs uppercase tracking-[0.1em] shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all" 
             onClick={() => navigate(`/book/${worker.id}`)}
           >
             Hire Helper

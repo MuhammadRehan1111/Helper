@@ -5,7 +5,7 @@ import {
   ArrowLeft, Calendar, Clock, MapPin, CreditCard, 
   CheckCircle2, Loader2, ShieldCheck, Star, 
   Phone, MessageSquare, ChevronRight, Truck,
-  Navigation, AlertCircle, ShoppingBag, Plus
+  Navigation, AlertCircle, ShoppingBag, Plus, Tag, ShoppingCart
 } from 'lucide-react';
 import { useAppContext } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
@@ -14,16 +14,35 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 export default function BookWorker() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { workers, addJob, showToast, currentUser } = useAppContext();
+  const { workers, addJob, showToast, currentUser, addToCart, t } = useAppContext();
   const worker = workers.find(w => w.id === id);
 
   const [step, setStep] = useState<'details' | 'processing' | 'confirmed' | 'tracking'>('details');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Available 30-min interval times from 8:00 AM to 10:00 PM
+  const timeSlots = React.useMemo(() => {
+    const slots = [];
+    for (let h = 8; h <= 22; h++) {
+      const hh = h.toString().padStart(2, '0');
+      slots.push(`${hh}:00`);
+      if (h !== 22) {
+        slots.push(`${hh}:30`);
+      }
+    }
+    return slots;
+  }, []);
+
   const [selectedTime, setSelectedTime] = useState('10:00');
   const [address, setAddress] = useState(currentUser?.savedAddresses?.[0]?.address || 'House 45, Sector F-7/2, Islamabad');
   const [paymentMethod, setPaymentMethod] = useState('Cash After Service');
   const [bookingId, setBookingId] = useState('');
   const [showAddressPicker, setShowAddressPicker] = useState(false);
+  
+  // Promo states
+  const [promoInput, setPromoInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState('');
+  const [discount, setDiscount] = useState(0);
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -35,8 +54,37 @@ export default function BookWorker() {
 
   if (!worker) return <div className="p-8 text-center">Worker not found</div>;
 
+  const handleApplyPromo = () => {
+    const code = promoInput.trim().toUpperCase();
+    if (code === 'WELCOME50') {
+      setDiscount(50);
+      setAppliedPromo('WELCOME50');
+      showToast('Promo WELCOME50 applied! Rs. 50 off', 'success');
+    } else if (code === 'HELPER100') {
+      setDiscount(100);
+      setAppliedPromo('HELPER100');
+      showToast('Promo HELPER100 applied! Rs. 100 off', 'success');
+    } else {
+      showToast('Invalid promo code', 'error');
+    }
+  };
+
   const handleBook = async () => {
+    // Validate future date and time
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    if (selectedDate === todayStr) {
+      const [sh, sm] = selectedTime.split(':').map(Number);
+      const ch = now.getHours();
+      const cm = now.getMinutes();
+      if (sh < ch || (sh === ch && sm <= cm)) {
+        showToast('Please select a future date and time', 'warning');
+        return;
+      }
+    }
+
     setStep('processing');
+    const finalPrice = Math.max(0, worker.hourlyRate + 49 - discount);
     try {
       const response = await fetch('/api/bookings', {
         method: 'POST',
@@ -49,7 +97,7 @@ export default function BookWorker() {
           time: selectedTime,
           address: address,
           category: worker.category,
-          price: worker.hourlyRate,
+          price: finalPrice,
           paymentMethod: paymentMethod
         })
       });
@@ -66,7 +114,7 @@ export default function BookWorker() {
         status: 'provider_assigned',
         date: selectedDate,
         address: address,
-        price: worker.hourlyRate,
+        price: finalPrice,
         category: worker.category,
         estimatedArrival: data?.followups?.[0]?.time || '30 minutes'
       });
@@ -86,7 +134,7 @@ export default function BookWorker() {
         status: 'provider_assigned',
         date: selectedDate,
         address,
-        price: worker.hourlyRate,
+        price: finalPrice,
         category: worker.category
       });
       setStep('confirmed');
@@ -174,6 +222,8 @@ export default function BookWorker() {
                              <input 
                                type="date" 
                                value={selectedDate}
+                               min={new Date().toISOString().split('T')[0]}
+                               max={new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
                                onChange={(e) => setSelectedDate(e.target.value)}
                                className="w-full h-14 bg-card border rounded-2xl pl-12 pr-4 font-bold text-sm focus:border-primary transition-all appearance-none"
                              />
@@ -184,12 +234,17 @@ export default function BookWorker() {
                           <label className="text-[10px] font-black text-muted-foreground ml-2 uppercase tracking-widest">Time</label>
                           <div className="relative group">
                              <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-primary pointer-events-none z-10" />
-                             <input 
-                               type="time" 
+                             <select 
                                value={selectedTime}
                                onChange={(e) => setSelectedTime(e.target.value)}
-                               className="w-full h-14 bg-card border rounded-2xl pl-12 pr-4 font-bold text-sm focus:border-primary transition-all appearance-none"
-                             />
+                               className="w-full h-14 bg-card border rounded-2xl pl-12 pr-8 font-bold text-sm focus:border-primary transition-all appearance-none"
+                             >
+                                {timeSlots.map(slot => (
+                                  <option key={slot} value={slot}>
+                                    {getDisplayTime(slot)}
+                                  </option>
+                                ))}
+                             </select>
                           </div>
                        </div>
                     </div>
@@ -214,6 +269,34 @@ export default function BookWorker() {
                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
                     </div>
                   </div>
+
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Promo Code</h4>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-primary pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="e.g. WELCOME50"
+                          value={promoInput}
+                          onChange={(e) => setPromoInput(e.target.value)}
+                          className="w-full h-12 bg-card border rounded-xl pl-11 pr-4 font-bold text-xs uppercase focus:border-primary outline-none transition-all"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleApplyPromo}
+                        className="bg-primary text-primary-foreground font-black text-xs uppercase tracking-wider px-6 rounded-xl transition-all active:scale-95"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                    {appliedPromo && (
+                      <p className="text-[10px] text-emerald-500 font-bold px-1">
+                        Promo code {appliedPromo} applied successfully!
+                      </p>
+                    )}
+                  </div>
                </section>
 
                {/* Price Summary */}
@@ -226,21 +309,42 @@ export default function BookWorker() {
                      <span className="text-sm font-medium">Platform Fee</span>
                      <span className="text-sm font-black">Rs. 49</span>
                   </div>
+                  {discount > 0 && (
+                     <div className="flex justify-between items-center text-emerald-500 font-medium animate-pulse">
+                        <span className="text-sm">Discount</span>
+                        <span className="text-sm font-black">- Rs. {discount}</span>
+                     </div>
+                  )}
                   <div className="flex justify-between items-center pt-2">
                      <span className="text-lg font-black italic">Total Amount</span>
-                     <span className="text-2xl font-black text-primary">Rs. {worker.hourlyRate + 49}</span>
+                     <span className="text-2xl font-black text-primary">Rs. {Math.max(0, worker.hourlyRate + 49 - discount)}</span>
                   </div>
                </section>
             </main>
 
-            <footer className="p-6 bg-card border-t mt-auto shadow-[0_-10px_40px_rgb(0,0,0,0.02)]">
-               <Button 
-                onClick={handleBook}
-                className="w-full h-16 rounded-3xl font-black text-lg shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
-               >
-                 Confirm Booking
-               </Button>
-               <div className="flex items-center justify-center gap-2 mt-4 text-[10px] text-muted-foreground font-black uppercase tracking-widest">
+            <footer className="p-6 bg-card border-t mt-auto shadow-[0_-10px_40px_rgb(0,0,0,0.02)] space-y-3">
+               <div className="flex gap-3">
+                  <Button 
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      addToCart({ workerId: worker.id, date: selectedDate, time: selectedTime, address });
+                      showToast('Added to Cart!', 'success');
+                      navigate('/cart');
+                    }}
+                    className="flex-1 h-16 rounded-3xl font-black text-xs uppercase tracking-widest border-2 hover:bg-secondary transition-all"
+                  >
+                    <ShoppingCart className="w-4 h-4 mr-2" />
+                    Cart
+                  </Button>
+                  <Button 
+                    onClick={handleBook}
+                    className="flex-[1.5] h-16 rounded-3xl font-black text-sm shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
+                  >
+                    Book Now
+                  </Button>
+               </div>
+               <div className="flex items-center justify-center gap-2 text-[10px] text-muted-foreground font-black uppercase tracking-widest">
                   <ShieldCheck className="w-3 h-3 text-emerald-500" />
                   Helper Trust Guarantee Included
                </div>

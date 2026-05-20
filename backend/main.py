@@ -200,5 +200,32 @@ async def send_otp(req: OtpReq):
         print(f"SMTP Error occurred: {str(e)}")
         raise HTTPException(500, f"Email sending failed: {str(e)}")
 
+class VoiceAgentReq(BaseModel):
+    prompt: str
+    language: Optional[str] = "auto"
+
+@app.post("/api/ai/voice-agent")
+async def voice_agent(req: VoiceAgentReq):
+    if not GEMINI_API_KEY:
+        raise HTTPException(500, "GEMINI_API_KEY not configured")
+    try:
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            system_instruction="""
+            You are a friendly, helpful Urdu/English voice assistant for the "Helper" app in Pakistan.
+            Auto-detect the language of the user prompt (can be Urdu script, English, or Roman Urdu).
+            Respond conversational and concisely in the SAME language/script/format.
+            If the user asks in Urdu script, respond in Urdu script.
+            If the user asks in Roman Urdu (e.g. 'AC technician chahiye'), respond in Roman Urdu.
+            If the user asks in English, respond in English.
+            Keep your response extremely brief (under 15 words) because it will be spoken back to the user.
+            """
+        )
+        response = model.generate_content(req.prompt)
+        return {"response": response.text.strip()}
+    except Exception as e:
+        raise HTTPException(500, f"AI Error: {str(e)}")
+
+
 if __name__ == "__main__":
     uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)

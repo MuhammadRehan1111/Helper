@@ -14,7 +14,9 @@ interface Message {
   duration?: string;
   time: string;
   status?: 'sent' | 'delivered' | 'read';
-  type: 'text' | 'voice';
+  type: 'text' | 'voice' | 'media';
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video';
 }
 
 export default function ChatRoom() {
@@ -38,6 +40,49 @@ export default function ChatRoom() {
   const recognitionRef = useRef<any>(null);
   const recordingIntervalRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const mediaUrl = URL.createObjectURL(file);
+    const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
+
+    const newMsg: Message = {
+      id: Date.now().toString(),
+      senderId: currentUser?.id || '',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'sent',
+      type: 'media',
+      mediaUrl,
+      mediaType
+    };
+
+    setMessages(prev => [...prev, newMsg]);
+
+    // Clear input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    // Auto reply for media attachment
+    setTimeout(() => {
+      setIsTyping(true);
+    }, 1000);
+
+    setTimeout(() => {
+      setIsTyping(false);
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        senderId: partner?.id || '',
+        text: "Got it! Looks good.",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'read',
+        type: 'text'
+      }]);
+    }, 2500);
+  };
 
   const startVoiceRecording = () => {
     setIsRecordingVoice(true);
@@ -240,9 +285,10 @@ export default function ChatRoom() {
                 <div className={`max-w-[75%] rounded-2xl px-4 py-2 relative ${
                   isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-card border border-border/50 text-card-foreground rounded-tl-sm shadow-sm'
                 }`}>
-                  {msg.type === 'text' ? (
+                  {msg.type === 'text' && (
                     <p className="text-[15px] leading-relaxed">{msg.text}</p>
-                  ) : (
+                  )}
+                  {msg.type === 'voice' && (
                     <div className="flex items-center gap-3 py-1 min-w-[140px]">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isMe ? 'bg-white/20' : 'bg-primary/10'}`}>
                         <Mic className={`w-4 h-4 ${isMe ? 'text-white' : 'text-primary'}`} />
@@ -253,6 +299,15 @@ export default function ChatRoom() {
                         </div>
                         <span className={`text-[9px] ${isMe ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{msg.duration}</span>
                       </div>
+                    </div>
+                  )}
+                  {msg.type === 'media' && (
+                    <div className="py-1 max-w-[240px] rounded-xl overflow-hidden">
+                      {msg.mediaType === 'video' ? (
+                        <video src={msg.mediaUrl} controls className="w-full rounded-xl" />
+                      ) : (
+                        <img src={msg.mediaUrl} alt="attachment" className="w-full rounded-xl object-cover max-h-48" />
+                      )}
                     </div>
                   )}
                   <div className="flex items-center justify-end mt-1 gap-1">
@@ -279,10 +334,21 @@ export default function ChatRoom() {
 
        <div className="px-3 py-3 bg-card border-t shrink-0 shadow-[0_-10px_20px_rgba(0,0,0,0.02)]">
          {!isRecordingVoice ? (
-           <div className="flex gap-2 mb-2 px-1">
-              <button className="flex items-center gap-1 bg-secondary text-secondary-foreground text-[10px] font-semibold px-2 py-1 rounded-full">
-                <ImageIcon className="w-3 h-3" /> Image
-              </button>
+            <div className="flex gap-2 mb-2 px-1">
+               <button 
+                 type="button"
+                 onClick={() => fileInputRef.current?.click()}
+                 className="flex items-center gap-1 bg-secondary text-secondary-foreground text-[10px] font-semibold px-2 py-1 rounded-full hover:bg-secondary/80 transition-colors"
+               >
+                 <ImageIcon className="w-3 h-3" /> Image
+               </button>
+               <input 
+                 type="file" 
+                 accept="image/*,video/*" 
+                 ref={fileInputRef} 
+                 onChange={handleMediaUpload} 
+                 className="hidden" 
+               />
               <button className="flex items-center gap-1 bg-secondary text-secondary-foreground text-[10px] font-semibold px-2 py-1 rounded-full">
                 <MapPin className="w-3 h-3" /> Location
               </button>

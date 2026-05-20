@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useAppContext } from '@/lib/AppContext';
-import { Users, Briefcase, DollarSign, Activity, LogOut, CheckCircle, XCircle, Trash2, ChartBar } from 'lucide-react';
+import { Users, Briefcase, DollarSign, Activity, LogOut, CheckCircle, XCircle, Trash2, ChartBar, Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 
 export default function AdminDashboard() {
-  const { workers, jobs, users, setCurrentUser } = useAppContext();
+  const { workers, jobs, users, setCurrentUser, updateJobStatus, showToast } = useAppContext();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -58,6 +58,9 @@ export default function AdminDashboard() {
             </TabsTrigger>
             <TabsTrigger value="analytics" className="flex-1 min-w-[90px] py-2.5 text-xs font-bold rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center justify-center gap-1.5 transition-all">
               <ChartBar className="w-3.5 h-3.5" /> Analytics
+            </TabsTrigger>
+            <TabsTrigger value="disputes" className="flex-1 min-w-[90px] py-2.5 text-xs font-bold rounded-xl data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center justify-center gap-1.5 transition-all">
+              <Shield className="w-3.5 h-3.5" /> Disputes
             </TabsTrigger>
           </TabsList>
           
@@ -307,6 +310,91 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="disputes" className="space-y-6">
+            <div className="bg-card p-6 rounded-2xl border border-border/50 shadow-sm">
+              <div className="flex justify-between items-center mb-6">
+                 <div>
+                   <h2 className="text-lg font-bold">Dispute Resolutions</h2>
+                   <p className="text-xs text-muted-foreground">Manage active disputes and issue payouts or refunds</p>
+                 </div>
+                 <Shield className="w-5 h-5 text-primary" />
+              </div>
+
+              {jobs.filter(j => j.status === 'disputed').length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+                  <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+                    <Shield className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm">No active disputes</h3>
+                    <p className="text-xs text-muted-foreground">All client and helper jobs are running smoothly.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {jobs.filter(j => j.status === 'disputed').map(job => {
+                    const client = users.find(u => u.id === job.userId);
+                    const worker = workers.find(w => w.id === job.workerId);
+                    return (
+                      <div key={job.id} className="border border-border/50 bg-secondary/10 p-5 rounded-2xl space-y-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="text-[10px] font-bold font-mono bg-secondary/50 text-foreground px-2.5 py-0.5 rounded-full">
+                              JOB ID: {job.id}
+                            </span>
+                            <h4 className="font-bold text-sm mt-2">{job.title || `${job.category} Service`}</h4>
+                          </div>
+                          <span className="text-sm font-black text-primary">Rs. {job.price || 0}</span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                          <div>
+                            <span className="block font-bold text-[9px] uppercase tracking-wider">Customer</span>
+                            <span className="font-semibold text-foreground">{client?.name || `ID: ${job.userId}`}</span>
+                          </div>
+                          <div>
+                            <span className="block font-bold text-[9px] uppercase tracking-wider">Worker</span>
+                            <span className="font-semibold text-foreground">{worker?.name || `ID: ${job.workerId}`}</span>
+                          </div>
+                          <div className="col-span-2 mt-1">
+                            <span className="block font-bold text-[9px] uppercase tracking-wider">Dispute Reason</span>
+                            <span className="font-medium text-destructive block mt-0.5 bg-destructive/5 border border-destructive/10 p-2.5 rounded-xl text-xs leading-relaxed">
+                              {job.disputeReason || "No explanation provided."}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="flex-1 text-xs font-bold border-destructive text-destructive hover:bg-destructive/10 h-10 rounded-xl"
+                            onClick={() => {
+                              updateJobStatus(job.id, 'refunded');
+                              showToast(`Job ${job.id} refunded successfully`, 'success');
+                            }}
+                          >
+                            Refund User
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            className="flex-1 text-xs font-bold h-10 rounded-xl"
+                            onClick={() => {
+                              updateJobStatus(job.id, 'completed');
+                              showToast(`Job ${job.id} paid to worker`, 'success');
+                            }}
+                          >
+                            Pay Worker
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </TabsContent>
 

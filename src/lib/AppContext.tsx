@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, Worker, Job, AgentLog, AiRequest, ToastMessage, Address } from './types';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { User, Worker, Job, AgentLog, AiRequest, ToastMessage, Address, CartItem } from './types';
 import { mockWorkers, mockJobs, mockUsers } from './mockData';
+import { Language, getTranslation } from './translations';
 
 export interface AppContextType {
   currentUser: User | null;
@@ -24,9 +25,39 @@ export interface AppContextType {
   removeAddress: (id: string) => void;
   cancelJob: (jobId: string, reason: string, cancelledBy: 'user' | 'worker') => void;
   showToast: (message: string, type?: ToastMessage['type']) => void;
+  // Cart
+  cart: CartItem[];
+  addToCart: (item: CartItem) => void;
+  removeFromCart: (workerId: string) => void;
+  clearCart: () => void;
+  // Translation
+  language: Language;
+  setLanguage: (lang: Language) => void;
+  t: (key: string) => string;
+  // Workers updater for geolocation
+  setWorkers: React.Dispatch<React.SetStateAction<Worker[]>>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+// Notification sound helper
+function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  } catch {
+    // Audio not available
+  }
+}
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -40,7 +71,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [workers, setWorkers] = useState<Worker[]>(() => {
     try {
       const saved = localStorage.getItem('helper_workers');
-      return saved ? JSON.parse(saved) : mockWorkers;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // If old data has fewer than 100 workers, reset to new mock data
+        return parsed.length >= 100 ? parsed : mockWorkers;
+      }
+      return mockWorkers;
     } catch {
       return mockWorkers;
     }
@@ -65,21 +101,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [currentAiRequest, setCurrentAiRequest] = useState<AiRequest | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Load from localStorage on mount
-  useEffect(() => {
+  // Cart state
+  const [cart, setCart] = useState<CartItem[]>(() => {
     try {
-      const savedUser = localStorage.getItem('helper_user');
-      const savedJobs = localStorage.getItem('helper_jobs');
-      const savedWorkers = localStorage.getItem('helper_workers');
-      const savedUsers = localStorage.getItem('helper_users');
-      if (savedUser) setCurrentUser(JSON.parse(savedUser));
-      if (savedJobs) setJobs(JSON.parse(savedJobs));
-      if (savedWorkers) setWorkers(JSON.parse(savedWorkers));
-      if (savedUsers) setUsers(JSON.parse(savedUsers));
-    } catch (e) {
-      console.error('Failed to load saved data:', e);
+      const saved = localStorage.getItem('helper_cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
     }
+  });
+
+  // Language state
+  const [language, setLanguageState] = useState<Language>(() => {
+    const saved = localStorage.getItem('app_language_code');
+    return (saved === 'ur' ? 'ur' : 'en') as Language;
+  });
+
+  const setLanguage = useCallback((lang: Language) => {
+    setLanguageState(lang);
+    localStorage.setItem('app_language_code', lang);
   }, []);
+
+  const t = useCallback((key: string) => getTranslation(language, key), [language]);
 
   // Save to localStorage on change
   useEffect(() => {
@@ -99,10 +142,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('helper_users', JSON.stringify(users));
   }, [users]);
 
+  useEffect(() => {
+    localStorage.setItem('helper_cart', JSON.stringify(cart));
+  }, [cart]);
+
   const addAgentLog = (log: AgentLog) => setAgentLogs(prev => [log, ...prev]);
   const clearAgentLogs = () => setAgentLogs([]);
 
-  const addJob = (job) => {
+  const addJob = (job: any) => {
     const newJob = { ...job, createdAt: new Date().toISOString() };
     setJobs(prev => [newJob, ...prev]);
     
@@ -110,7 +157,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const worker = workers.find(w => w.id === job.workerId);
     if (worker) {
       showToast(`New job assigned to worker: ${worker.name}`, 'success');
-      // Mock notification for user as well
       showToast(`Your booking for ${job.title} is confirmed!`, 'success');
     }
   };
@@ -146,7 +192,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const cancelJob = (jobId: string, reason: string, cancelledBy: 'user' | 'worker') => {
     setJobs(prev => prev.map(j => {
       if (j.id === jobId) {
-        // If worker cancels, decrease rating
         if (cancelledBy === 'worker') {
           setWorkers(ws => ws.map(w => {
             if (w.id === j.workerId) {
@@ -159,7 +204,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         } else {
           showToast(`Job cancelled by user: ${reason}`, 'info');
         }
-        return { ...j, status: 'cancelled', cancellationReason: reason, cancelledBy };
+        return { ...j, status: 'cancelled' as const, cancellationReason: reason, cancelledBy };
       }
       return j;
     }));
@@ -168,10 +213,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const showToast = (message: string, type: ToastMessage['type'] = 'info') => {
     const id = Math.random().toString(36).substr(2, 9);
     setToasts(prev => [...prev, { id, message, type }]);
+    playNotificationSound();
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 3000);
   };
+
+  // Cart helpers
+  const addToCart = (item: CartItem) => {
+    setCart(prev => {
+      const exists = prev.find(c => c.workerId === item.workerId);
+      if (exists) return prev;
+      return [...prev, item];
+    });
+    showToast('Added to cart!', 'success');
+  };
+
+  const removeFromCart = (workerId: string) => {
+    setCart(prev => prev.filter(c => c.workerId !== workerId));
+  };
+
+  const clearCart = () => setCart([]);
 
   return (
     <AppContext.Provider value={{ 
@@ -181,7 +243,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setCurrentAiRequest, addAgentLog, clearAgentLogs,
       addJob, updateJobStatus, addWorker, updateWorkerAvailability, updateWorkerProfile, addUser,
       addAddress, removeAddress, cancelJob,
-      showToast
+      showToast,
+      cart, addToCart, removeFromCart, clearCart,
+      language, setLanguage, t,
+      setWorkers,
     }}>
       {children}
     </AppContext.Provider>
