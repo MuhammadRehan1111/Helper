@@ -10,6 +10,7 @@ import { useAppContext } from '@/lib/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { mockCategories } from '@/lib/mockData';
 
 export default function PostJob() {
   const navigate = useNavigate();
@@ -20,11 +21,16 @@ export default function PostJob() {
     description: '',
     location: 'Sector F-7, Islamabad',
     budget: '',
-    date: 'As soon as possible'
+    date: 'As soon as possible',
+    category: 'Electrician'
   });
 
   const [isPosting, setIsPosting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const recognitionRef = React.useRef<any>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +49,8 @@ export default function PostJob() {
       date: formData.date,
       price: parseInt(formData.budget) || 0,
       address: formData.location,
-      category: 'Custom Service'
+      category: formData.category,
+      mediaUrl // Attach media if present
     };
 
     // Simulate AI Job Analysis & Broadcast
@@ -53,6 +60,55 @@ export default function PostJob() {
       setIsSuccess(true);
       showToast('Custom job broadcasted to nearby pros!', 'success');
     }, 2500);
+  };
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setMediaUrl(reader.result as string);
+        showToast('Photo attached successfully!', 'success');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleVoiceNote = () => {
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showToast("Voice recognition not supported in this browser.", "error");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
+    
+    recognition.onstart = () => {
+      setIsRecording(true);
+      showToast('Recording voice note...', 'info');
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setFormData(prev => ({
+        ...prev,
+        description: prev.description ? `${prev.description}\n[Voice Note]: ${transcript}` : `[Voice Note]: ${transcript}`
+      }));
+      showToast('Voice note transcribed!', 'success');
+    };
+
+    recognition.onend = () => setIsRecording(false);
+    recognition.onerror = () => setIsRecording(false);
+    recognition.start();
   };
 
   const handleBack = () => {
@@ -125,7 +181,20 @@ export default function PostJob() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-           <div className="space-y-3">
+            <div className="space-y-3">
+              <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-2">Service Category</label>
+              <select 
+                value={formData.category} 
+                onChange={e => setFormData({...formData, category: e.target.value})}
+                className="w-full bg-white rounded-2xl px-6 h-16 text-lg font-bold border border-slate-100 shadow-sm outline-none focus:border-primary"
+              >
+                {mockCategories.map(cat => (
+                  <option key={cat.id} value={cat.name}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-3">
               <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-2">What do you need?</label>
               <Input 
                 value={formData.title}
@@ -177,13 +246,14 @@ export default function PostJob() {
            <div className="space-y-3">
               <label className="text-xs font-black uppercase tracking-widest text-slate-400 px-2">Attach Proof (Optional)</label>
               <div className="flex gap-3">
-                 <button type="button" className="flex-1 h-20 bg-white border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 hover:border-primary/50 hover:text-primary transition-all">
+                 <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handlePhotoUpload} />
+                 <button type="button" onClick={() => fileInputRef.current?.click()} className={`flex-1 h-20 bg-white border-2 border-dashed ${mediaUrl ? 'border-green-500 text-green-600' : 'border-slate-200 text-slate-400'} rounded-3xl flex flex-col items-center justify-center hover:border-primary/50 hover:text-primary transition-all`}>
                     <Camera className="w-6 h-6 mb-1" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Take Photo</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">{mediaUrl ? 'Photo Added' : 'Take Photo'}</span>
                  </button>
-                 <button type="button" className="flex-1 h-20 bg-white border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-slate-400 hover:border-primary/50 hover:text-primary transition-all">
+                 <button type="button" onClick={handleVoiceNote} className={`flex-1 h-20 bg-white border-2 border-dashed ${isRecording ? 'border-red-500 text-red-500 animate-pulse' : 'border-slate-200 text-slate-400'} rounded-3xl flex flex-col items-center justify-center hover:border-primary/50 hover:text-primary transition-all`}>
                     <Mic className="w-6 h-6 mb-1" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Voice Note</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest">{isRecording ? 'Recording...' : 'Voice Note'}</span>
                  </button>
               </div>
            </div>

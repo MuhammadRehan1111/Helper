@@ -22,7 +22,6 @@ export const mockUsers: User[] = [
     email: 'hamza@example.com',
     avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400&h=400&fit=crop',
     favorites: ['w1', 'w7'],
-    points: 250,
     savedAddresses: [
       { id: '1', label: 'Home', address: 'DHA Phase 6, Karachi', iconType: 'home' },
       { id: '2', label: 'Office', address: 'I.I Chundrigar Rd, Karachi', iconType: 'office' }
@@ -233,6 +232,7 @@ function generateWorkers(): Worker[] {
         bio: BIOS[category] || 'Skilled professional ready to serve you.',
         gallery: [],
         city: city.name,
+        address: `${area.name}, ${city.name}`,
         lat,
         lng,
         phone,

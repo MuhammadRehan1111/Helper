@@ -4,10 +4,14 @@ import { Clock, MapPin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function WorkerRequests() {
-  const { jobs, users, currentUser, updateJobStatus } = useAppContext();
+  const { jobs, users, currentUser, workers, acceptJob, showToast, updateJobStatus } = useAppContext();
   const navigate = useNavigate();
 
-  const requests = jobs.filter(j => j.workerId === currentUser?.id && j.status === 'pending');
+  const workerInfo = workers.find(w => w.id === currentUser?.id);
+  const requests = jobs.filter(j => 
+    j.status === 'pending' && 
+    (j.workerId === currentUser?.id || (workerInfo && j.category === workerInfo.category && (j.workerId === 'system-agent' || !j.workerId || j.workerId === '')))
+  );
 
   return (
     <div className="flex flex-col min-h-full bg-background pb-8 pt-4">
@@ -50,9 +54,16 @@ export default function WorkerRequests() {
                 <Button variant="outline" className="flex-1 rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200" onClick={() => updateJobStatus(job.id, 'rejected')}>
                   Decline
                 </Button>
-                <Button className="flex-1 rounded-xl bg-primary" onClick={() => {
-                  updateJobStatus(job.id, 'accepted');
-                  navigate('/jobs');
+                <Button className="flex-1 rounded-xl bg-primary" onClick={async () => {
+                  if (currentUser) {
+                    const res = await acceptJob(job.id, currentUser.id);
+                    if (res.success) {
+                      showToast(res.message, 'success');
+                      navigate('/jobs');
+                    } else {
+                      showToast(res.message, 'error');
+                    }
+                  }
                 }}>
                   Accept Job
                 </Button>

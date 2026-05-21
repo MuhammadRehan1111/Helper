@@ -12,7 +12,7 @@ const CATEGORIES = [
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { currentUser, setCurrentUser, workers, updateWorkerProfile, showToast } = useAppContext();
+  const { currentUser, setCurrentUser, workers, updateWorkerProfile, showToast, setLanguage: setAppLanguage } = useAppContext();
   
   const workerInfo = currentUser?.role === 'worker' ? workers.find(w => w.id === currentUser.id) : null;
 
@@ -90,10 +90,17 @@ export default function Settings() {
   };
 
   const handleSelectLanguage = (lang: string) => {
-    setLanguage(lang);
-    localStorage.setItem('app_language', lang);
+    if (lang === 'Urdu (اردو)') {
+      setAppLanguage('ur');
+      setLanguage('Urdu (اردو)');
+      localStorage.setItem('app_language', 'Urdu (اردو)');
+    } else {
+      setAppLanguage('en');
+      setLanguage('English (United Kingdom)');
+      localStorage.setItem('app_language', 'English (United Kingdom)');
+    }
     setShowLanguageModal(false);
-    showToast(`Language changed to ${lang}`, "success");
+    showToast(`Language changed`, "success");
   };
 
   const handleSavePrivacy = () => {

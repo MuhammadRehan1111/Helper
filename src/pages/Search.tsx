@@ -17,8 +17,21 @@ export default function SearchPage() {
   const [sortMethod, setSortMethod] = useState('');
 
   let filteredWorkers = workers.filter(w => {
-    if (category && (!w.category.toLowerCase().includes(category.toLowerCase()) && !(w.tags || []).some(t => t.toLowerCase().includes(category.toLowerCase())))) return false;
-    if (query && !w.name.toLowerCase().includes(query.toLowerCase()) && !w.category.toLowerCase().includes(query.toLowerCase())) return false;
+    const q = query.toLowerCase();
+    
+    // AI Smart category inference
+    let inferredCategory = category;
+    if (!category && q) {
+      if (q.includes('ac') || q.includes('cooling') || q.includes('air con')) inferredCategory = 'AC Technician';
+      else if (q.includes('electric') || q.includes('wire') || q.includes('light')) inferredCategory = 'Electrician';
+      else if (q.includes('plumb') || q.includes('pipe') || q.includes('water') || q.includes('leak')) inferredCategory = 'Plumber';
+      else if (q.includes('wood') || q.includes('carpent') || q.includes('furniture')) inferredCategory = 'Carpenter';
+      else if (q.includes('paint') || q.includes('color')) inferredCategory = 'Painter';
+      else if (q.includes('clean')) inferredCategory = 'Cleaning';
+    }
+
+    if (inferredCategory && (!w.category.toLowerCase().includes(inferredCategory.toLowerCase()) && !(w.tags || []).some(t => t.toLowerCase().includes(inferredCategory.toLowerCase())))) return false;
+    if (query && !w.name.toLowerCase().includes(q) && !w.category.toLowerCase().includes(q) && !(w.tags || []).some(t => t.toLowerCase().includes(q))) return false;
     return true;
   });
 

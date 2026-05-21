@@ -14,7 +14,6 @@ export interface User {
   avatar?: string;
   favorites?: string[];
   savedAddresses?: Address[];
-  points?: number;
 }
 
 export interface Worker {
@@ -40,6 +39,7 @@ export interface Worker {
   lat?: number;
   lng?: number;
   phone?: string;
+  address?: string;
   completedJobs?: number;
 }
 

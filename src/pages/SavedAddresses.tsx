@@ -27,22 +27,28 @@ export default function SavedAddresses() {
     }
   };
 
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [newAddress, setNewAddress] = useState({ label: '', address: '', type: 'home' });
+
   const handleAddNew = () => {
-    const label = prompt("Enter address label (e.g. Home, Bakery):");
-    if (!label) return;
-    const addrText = prompt("Enter full address:");
-    if (!addrText) return;
-    
-    const type = prompt("Icon type (home, office, heart, other):") as any;
-    
+    setShowMapModal(true);
+  };
+
+  const handleSaveMapAddress = () => {
+    if (!newAddress.label || !newAddress.address) {
+      alert("Please fill both label and address");
+      return;
+    }
     const newAddr: Address = {
       id: Math.random().toString(36).substr(2, 9),
-      label,
-      address: addrText,
-      iconType: type || 'other'
+      label: newAddress.label,
+      address: newAddress.address,
+      iconType: newAddress.type as any
     };
     
     addAddress(newAddr);
+    setShowMapModal(false);
+    setNewAddress({ label: '', address: '', type: 'home' });
   };
 
   const addresses = currentUser?.savedAddresses || [
@@ -109,6 +115,75 @@ export default function SavedAddresses() {
            <p className="text-sm font-bold text-slate-600 italic">"Save time by adding your frequently used addresses."</p>
         </div>
       </main>
+
+      {/* Map Selection Modal */}
+      {showMapModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end">
+          <div className="bg-card w-full h-[80vh] rounded-t-3xl overflow-hidden flex flex-col slide-in relative">
+            <header className="p-4 border-b flex justify-between items-center bg-card z-10 shadow-sm relative">
+              <h3 className="font-bold text-lg">Pin Location</h3>
+              <button className="text-muted-foreground hover:text-foreground p-1" onClick={() => setShowMapModal(false)}>✕</button>
+            </header>
+            
+            <div className="relative flex-1 bg-blue-50/50 flex items-center justify-center overflow-hidden">
+               {/* Decorative Fake Map Background using CSS Patterns */}
+               <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(59, 130, 246, 0.3) 1px, transparent 0)', backgroundSize: '24px 24px' }}></div>
+               <div className="absolute inset-0 grid grid-cols-6 grid-rows-6 gap-1 pointer-events-none opacity-20">
+                 {Array.from({length: 36}).map((_, i) => <div key={i} className="border border-blue-900/10 bg-blue-100/30 rounded-lg"></div>)}
+               </div>
+               
+               {/* Center Pin */}
+               <div className="relative z-10 flex flex-col items-center justify-center -mt-8">
+                  <div className="bg-primary text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-md mb-2 animate-bounce">Move map to pin</div>
+                  <MapPin className="w-10 h-10 text-primary drop-shadow-xl" />
+                  <div className="w-4 h-1 bg-black/20 rounded-[100%] mt-1 blur-[1px]"></div>
+               </div>
+            </div>
+
+            <div className="p-6 bg-card border-t shadow-[0_-10px_40px_rgb(0,0,0,0.1)] z-10 relative">
+               <div className="space-y-4 mb-6">
+                 <div>
+                   <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Label (e.g. Home, Work)</label>
+                   <input 
+                     type="text" 
+                     className="w-full bg-secondary/50 rounded-xl px-4 py-3 text-sm font-bold border border-border/50 outline-none focus:border-primary"
+                     placeholder="Home"
+                     value={newAddress.label}
+                     onChange={e => setNewAddress({...newAddress, label: e.target.value})}
+                   />
+                 </div>
+                 <div>
+                   <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Full Address (AI Validated)</label>
+                   <input 
+                     type="text" 
+                     className="w-full bg-secondary/50 rounded-xl px-4 py-3 text-sm font-bold border border-border/50 outline-none focus:border-primary"
+                     placeholder="Sector F-7/2, Islamabad"
+                     value={newAddress.address}
+                     onChange={e => setNewAddress({...newAddress, address: e.target.value})}
+                   />
+                 </div>
+                 <div>
+                   <label className="text-[10px] font-bold text-muted-foreground uppercase mb-2 block">Address Type</label>
+                   <div className="flex gap-2">
+                     {['home', 'office', 'heart', 'other'].map(t => (
+                       <button 
+                         key={t}
+                         onClick={() => setNewAddress({...newAddress, type: t})}
+                         className={`px-4 py-2 rounded-xl text-xs font-bold capitalize border-2 transition-all ${newAddress.type === t ? 'border-primary bg-primary/10 text-primary' : 'border-border/50 bg-secondary/30 text-muted-foreground'}`}
+                       >
+                         {t}
+                       </button>
+                     ))}
+                   </div>
+                 </div>
+               </div>
+               <Button className="w-full h-14 rounded-xl text-lg font-bold shadow-lg shadow-primary/20" onClick={handleSaveMapAddress}>
+                 Confirm & Save Address
+               </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

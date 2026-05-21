@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { User, Worker, Job, AgentLog, AiRequest, ToastMessage, Address, CartItem } from './types';
 import { mockWorkers, mockJobs, mockUsers } from './mockData';
 import { Language, getTranslation } from './translations';
+import { ref, set, onValue, update, push, runTransaction, get } from 'firebase/database';
+import { db } from './firebase';
 
 export interface AppContextType {
   currentUser: User | null;
@@ -9,6 +11,7 @@ export interface AppContextType {
   workers: Worker[];
   users: User[];
   jobs: Job[];
+  transactions: any[];
   agentLogs: AgentLog[];
   currentAiRequest: AiRequest | null;
   toasts: ToastMessage[];
@@ -17,6 +20,7 @@ export interface AppContextType {
   clearAgentLogs: () => void;
   addJob: (job: Job) => void;
   updateJobStatus: (id: string, status: Job['status']) => void;
+  acceptJob: (jobId: string, workerId: string) => Promise<{ success: boolean; message: string }>;
   addWorker: (worker: Worker) => void;
   updateWorkerAvailability: (id: string, available: boolean) => void;
   updateWorkerProfile: (id: string, profile: Partial<Worker>) => void;
@@ -68,35 +72,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return null;
     }
   });
-  const [workers, setWorkers] = useState<Worker[]>(() => {
-    try {
-      const saved = localStorage.getItem('helper_workers');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // If old data has fewer than 100 workers, reset to new mock data
-        return parsed.length >= 100 ? parsed : mockWorkers;
-      }
-      return mockWorkers;
-    } catch {
-      return mockWorkers;
-    }
-  });
-  const [users, setUsers] = useState<User[]>(() => {
-    try {
-      const saved = localStorage.getItem('helper_users');
-      return saved ? JSON.parse(saved) : mockUsers;
-    } catch {
-      return mockUsers;
-    }
-  });
-  const [jobs, setJobs] = useState<Job[]>(() => {
-    try {
-      const saved = localStorage.getItem('helper_jobs');
-      return saved ? JSON.parse(saved) : mockJobs;
-    } catch {
-      return mockJobs;
-    }
-  });
+
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [currentAiRequest, setCurrentAiRequest] = useState<AiRequest | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -122,38 +103,202 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('app_language_code', lang);
   }, []);
 
+  useEffect(() => {
+    document.documentElement.dir = language === 'ur' ? 'rtl' : 'ltr';
+  }, [language]);
+
   const t = useCallback((key: string) => getTranslation(language, key), [language]);
 
-  // Save to localStorage on change
+  // Sync state with LocalStorage for quick load / offline fallback
   useEffect(() => {
     if (currentUser) localStorage.setItem('helper_user', JSON.stringify(currentUser));
     else localStorage.removeItem('helper_user');
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('helper_jobs', JSON.stringify(jobs));
+    if (jobs.length > 0) localStorage.setItem('helper_jobs', JSON.stringify(jobs));
   }, [jobs]);
 
   useEffect(() => {
-    localStorage.setItem('helper_workers', JSON.stringify(workers));
+    if (workers.length > 0) localStorage.setItem('helper_workers', JSON.stringify(workers));
   }, [workers]);
 
   useEffect(() => {
-    localStorage.setItem('helper_users', JSON.stringify(users));
+    if (users.length > 0) localStorage.setItem('helper_users', JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
     localStorage.setItem('helper_cart', JSON.stringify(cart));
   }, [cart]);
 
+  useEffect(() => {
+    if (transactions.length > 0) localStorage.setItem('helper_transactions', JSON.stringify(transactions));
+  }, [transactions]);
+
+  // Load from LocalStorage initially for faster paint
+  useEffect(() => {
+    try {
+      const localWorkers = localStorage.getItem('helper_workers');
+      if (localWorkers) setWorkers(JSON.parse(localWorkers));
+      const localUsers = localStorage.getItem('helper_users');
+      if (localUsers) setUsers(JSON.parse(localUsers));
+      const localJobs = localStorage.getItem('helper_jobs');
+      if (localJobs) setJobs(JSON.parse(localJobs));
+      const localTransactions = localStorage.getItem('helper_transactions');
+      if (localTransactions) setTransactions(JSON.parse(localTransactions));
+    } catch (e) {
+      console.error("Local storage load error", e);
+    }
+  }, []);
+
+  // Firebase Synchronization and Seeding
+  useEffect(() => {
+    // 1. Sync Workers
+    const workersRef = ref(db, 'workers');
+    get(workersRef).then((snapshot) => {
+      const needsSeeding = !snapshot.exists() || Object.keys(snapshot.val()).length < 250;
+      if (needsSeeding) {
+        const initialWorkers: Record<string, Worker> = {};
+        mockWorkers.forEach(w => {
+          initialWorkers[w.id] = w;
+        });
+        set(workersRef, initialWorkers);
+      }
+    });
+
+    const unsubscribeWorkers = onValue(workersRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        const list = Object.values(val) as Worker[];
+        setWorkers(list);
+      }
+    });
+
+    // 2. Sync Jobs
+    const jobsRef = ref(db, 'jobs');
+    get(jobsRef).then((snapshot) => {
+      if (!snapshot.exists()) {
+        const initialJobs: Record<string, Job> = {};
+        mockJobs.forEach(j => {
+          initialJobs[j.id] = j;
+        });
+        set(jobsRef, initialJobs);
+      }
+    });
+
+    const unsubscribeJobs = onValue(jobsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        const list = Object.values(val) as Job[];
+        setJobs(list.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime()));
+      }
+    });
+
+    // 3. Sync Users
+    const usersRef = ref(db, 'users');
+    get(usersRef).then((snapshot) => {
+      if (!snapshot.exists()) {
+        const initialUsers: Record<string, User> = {};
+        mockUsers.forEach(u => {
+          initialUsers[u.id] = u;
+        });
+        set(usersRef, initialUsers);
+      }
+    });
+
+    const unsubscribeUsers = onValue(usersRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        const list = Object.values(val) as User[];
+        setUsers(list);
+      }
+    });
+
+    // 4. Sync Transactions
+    const transactionsRef = ref(db, 'transactions');
+    const unsubscribeTransactions = onValue(transactionsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        const list = Object.values(val) as any[];
+        setTransactions(list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      }
+    });
+
+    return () => {
+      unsubscribeWorkers();
+      unsubscribeJobs();
+      unsubscribeUsers();
+      unsubscribeTransactions();
+    };
+  }, []);
+
+  // Listen for new jobs to notify relevant category workers
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'worker') return;
+    
+    // Find worker info
+    const workerInfo = workers.find(w => w.id === currentUser.id);
+    if (!workerInfo) return;
+
+    const jobsRef = ref(db, 'jobs');
+    const appStartTime = Date.now();
+    const notifiedJobIds = new Set<string>();
+
+    const unsubscribe = onValue(jobsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        const list = Object.values(val) as Job[];
+        
+        list.forEach(job => {
+          // If job is pending, matches worker's category, not created by current user,
+          // created recently, and hasn't been notified:
+          if (
+            job.status === 'pending' &&
+            job.category === workerInfo.category &&
+            job.userId !== currentUser.id &&
+            new Date(job.createdAt || '').getTime() > appStartTime - 15000 &&
+            !notifiedJobIds.has(job.id)
+          ) {
+            notifiedJobIds.add(job.id);
+            // Notify worker!
+            showToast(`New ${job.category} job in ${job.address || 'your area'}! Accept now`, 'success');
+            // Play notification sound
+            playNotificationSound();
+          }
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, workers]);
+
+  // Keep currentUser synced if its details change in users node
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const userRef = ref(db, `users/${currentUser.id}`);
+    const unsubscribe = onValue(userRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val() as User;
+        // Compare to prevent loop
+        if (JSON.stringify(val) !== JSON.stringify(currentUser)) {
+          setCurrentUser(val);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [currentUser?.id]);
+
   const addAgentLog = (log: AgentLog) => setAgentLogs(prev => [log, ...prev]);
   const clearAgentLogs = () => setAgentLogs([]);
 
   const addJob = (job: any) => {
-    const newJob = { ...job, createdAt: new Date().toISOString() };
-    setJobs(prev => [newJob, ...prev]);
+    const newJob = { 
+      ...job, 
+      createdAt: new Date().toISOString() 
+    };
+    set(ref(db, `jobs/${job.id}`), newJob);
     
-    // Notification for worker
+    // Notification for specific worker if assigned
     const worker = workers.find(w => w.id === job.workerId);
     if (worker) {
       showToast(`New job assigned to worker: ${worker.name}`, 'success');
@@ -161,53 +306,129 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateJobStatus = (id: string, status: Job['status']) => 
-    setJobs(prev => prev.map(j => j.id === id ? { ...j, status } : j));
+  const updateJobStatus = (id: string, status: Job['status']) => {
+    update(ref(db, `jobs/${id}`), { status });
+    
+    // Generate transaction record on completed/reviewed
+    if (status === 'completed' || status === 'reviewed') {
+      const jobRef = ref(db, `jobs/${id}`);
+      get(jobRef).then((snapshot) => {
+        if (snapshot.exists()) {
+          const job = snapshot.val() as Job;
+          
+          // Make sure we only create one transaction per job/status stage or check if already created
+          const transId = 'TX-' + Math.random().toString(36).substr(2, 6).toUpperCase();
+          const newTrans = {
+            id: transId,
+            jobId: job.id,
+            workerId: job.workerId,
+            userId: job.userId,
+            amount: job.price || 0,
+            paymentMethod: 'JazzCash/EasyPaisa/Card',
+            timestamp: new Date().toISOString(),
+            status: 'Completed',
+            title: job.title
+          };
+          set(ref(db, `transactions/${transId}`), newTrans);
+
+          // Update completedJobs count for the worker
+          if (job.workerId) {
+            const workerRef = ref(db, `workers/${job.workerId}`);
+            get(workerRef).then((wSnap) => {
+              if (wSnap.exists()) {
+                const worker = wSnap.val();
+                const completedJobs = (worker.completedJobs || 0) + 1;
+                update(workerRef, { completedJobs });
+              }
+            });
+          }
+        }
+      });
+    }
+  };
+
+  // Safe Accept Job (First Accept Wins)
+  const acceptJob = async (jobId: string, workerId: string): Promise<{ success: boolean; message: string }> => {
+    const jobRef = ref(db, `jobs/${jobId}`);
+    try {
+      const result = await runTransaction(jobRef, (currentJob) => {
+        if (currentJob) {
+          if (currentJob.status !== 'pending' && currentJob.status !== 'provider_assigned') {
+            // Already taken or cancelled
+            return; 
+          }
+          currentJob.status = 'accepted';
+          currentJob.workerId = workerId;
+          return currentJob;
+        }
+        return currentJob;
+      });
+
+      if (result.committed) {
+        return { success: true, message: 'Job accepted successfully!' };
+      } else {
+        return { success: false, message: 'Job already taken by another provider.' };
+      }
+    } catch (error) {
+      console.error("Accept job transaction error: ", error);
+      return { success: false, message: 'Error accepting job. Please try again.' };
+    }
+  };
   
-  const addWorker = (worker: Worker) => setWorkers(prev => [...prev, worker]);
-  const updateWorkerAvailability = (id: string, available: boolean) => 
-    setWorkers(prev => prev.map(w => w.id === id ? { ...w, available } : w));
-  const updateWorkerProfile = (id: string, profile: Partial<Worker>) =>
-    setWorkers(prev => prev.map(w => w.id === id ? { ...w, ...profile } : w));
-  const addUser = (user: User) => setUsers(prev => [...prev, user]);
+  const addWorker = (worker: Worker) => {
+    set(ref(db, `workers/${worker.id}`), worker);
+  };
+
+  const updateWorkerAvailability = (id: string, available: boolean) => {
+    update(ref(db, `workers/${id}`), { available });
+  };
+
+  const updateWorkerProfile = (id: string, profile: Partial<Worker>) => {
+    update(ref(db, `workers/${id}`), profile);
+  };
+
+  const addUser = (user: User) => {
+    set(ref(db, `users/${user.id}`), user);
+  };
 
   const addAddress = (address: Address) => {
     if (!currentUser) return;
-    const updatedUser = {
-      ...currentUser,
-      savedAddresses: [...(currentUser.savedAddresses || []), address]
-    };
-    setCurrentUser(updatedUser);
+    const updatedAddresses = [...(currentUser.savedAddresses || []), address];
+    update(ref(db, `users/${currentUser.id}`), { savedAddresses: updatedAddresses });
   };
 
   const removeAddress = (id: string) => {
     if (!currentUser) return;
-    const updatedUser = {
-      ...currentUser,
-      savedAddresses: (currentUser.savedAddresses || []).filter(a => a.id !== id)
-    };
-    setCurrentUser(updatedUser);
+    const updatedAddresses = (currentUser.savedAddresses || []).filter(a => a.id !== id);
+    update(ref(db, `users/${currentUser.id}`), { savedAddresses: updatedAddresses });
   };
 
   const cancelJob = (jobId: string, reason: string, cancelledBy: 'user' | 'worker') => {
-    setJobs(prev => prev.map(j => {
-      if (j.id === jobId) {
-        if (cancelledBy === 'worker') {
-          setWorkers(ws => ws.map(w => {
-            if (w.id === j.workerId) {
+    const jobRef = ref(db, `jobs/${jobId}`);
+    get(jobRef).then((snapshot) => {
+      if (snapshot.exists()) {
+        const job = snapshot.val() as Job;
+        update(jobRef, {
+          status: 'cancelled',
+          cancellationReason: reason,
+          cancelledBy
+        });
+
+        if (cancelledBy === 'worker' && job.workerId) {
+          const workerRef = ref(db, `workers/${job.workerId}`);
+          get(workerRef).then((wSnap) => {
+            if (wSnap.exists()) {
+              const w = wSnap.val();
               const newRating = Math.max(1, w.rating - 0.2);
               showToast(`${w.name}'s ranking decreased due to cancellation.`, 'error');
-              return { ...w, rating: parseFloat(newRating.toFixed(1)) };
+              update(workerRef, { rating: parseFloat(newRating.toFixed(1)) });
             }
-            return w;
-          }));
+          });
         } else {
           showToast(`Job cancelled by user: ${reason}`, 'info');
         }
-        return { ...j, status: 'cancelled' as const, cancellationReason: reason, cancelledBy };
       }
-      return j;
-    }));
+    });
   };
 
   const showToast = (message: string, type: ToastMessage['type'] = 'info') => {
@@ -238,10 +459,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{ 
       currentUser, setCurrentUser, 
-      workers, users, jobs, 
+      workers, users, jobs, transactions,
       agentLogs, currentAiRequest, toasts,
       setCurrentAiRequest, addAgentLog, clearAgentLogs,
-      addJob, updateJobStatus, addWorker, updateWorkerAvailability, updateWorkerProfile, addUser,
+      addJob, updateJobStatus, acceptJob, addWorker, updateWorkerAvailability, updateWorkerProfile, addUser,
       addAddress, removeAddress, cancelJob,
       showToast,
       cart, addToCart, removeFromCart, clearCart,

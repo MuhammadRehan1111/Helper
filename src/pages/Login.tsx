@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '@/lib/AppContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Wrench, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Wrench, ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
   const { setCurrentUser, currentUser, users, workers, showToast } = useAppContext();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   
@@ -201,9 +202,9 @@ export default function Login() {
             />
             {fieldErrors.email && <p className="text-[10px] text-red-500 ml-2">{fieldErrors.email}</p>}
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 relative">
             <Input 
-              type="password"
+              type={showPassword ? "text" : "password"}
               placeholder="Password (any)" 
               value={password}
               onChange={e => {
@@ -214,8 +215,15 @@ export default function Login() {
                   setFieldErrors(newErrors);
                 }
               }}
-              className={`h-14 rounded-xl text-lg bg-card border-border/50 shadow-sm ${fieldErrors.password ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+              className={`h-14 rounded-xl text-lg bg-card border-border/50 shadow-sm pr-12 ${fieldErrors.password ? 'border-red-500 ring-1 ring-red-500' : ''}`}
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
+            >
+              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+            </button>
             {fieldErrors.password && <p className="text-[10px] text-red-500 ml-2">{fieldErrors.password}</p>}
             {errorMsg && <p className="text-xs text-red-500 text-center font-medium mt-2">{errorMsg}</p>}
           </div>

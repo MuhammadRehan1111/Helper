@@ -6,7 +6,7 @@ import { useAppContext } from '@/lib/AppContext';
 
 export default function PaymentMethods() {
   const navigate = useNavigate();
-  const { currentUser, jobs, showToast } = useAppContext();
+  const { currentUser, jobs, transactions, showToast } = useAppContext();
 
   // Worker Payout states
   const [payoutAmount, setPayoutAmount] = useState('');
@@ -192,6 +192,34 @@ export default function PaymentMethods() {
               <p className="text-xs text-muted-foreground text-center py-6 bg-card border border-dashed rounded-2xl">No withdrawals requested yet.</p>
             )}
           </section>
+
+          {/* Earning Transactions History */}
+          <section className="pb-8">
+            <div className="flex items-center gap-2 mb-3 px-2">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Job Earnings History</h2>
+            </div>
+            {transactions && transactions.filter(tx => tx.workerId === currentUser?.id).length > 0 ? (
+              <div className="bg-card rounded-2xl border border-border/50 divide-y divide-border/30 overflow-hidden shadow-sm">
+                {transactions.filter(tx => tx.workerId === currentUser?.id).map((tx, idx) => (
+                  <div key={idx} className="p-4 flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-sm">{tx.title || 'Service Completed'}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(tx.timestamp).toLocaleDateString()} • ID: {tx.id}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-extrabold text-sm text-green-600">+ Rs. {tx.amount}</p>
+                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-green-100 text-green-700">
+                        {tx.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-6 bg-card border border-dashed rounded-2xl">No earnings recorded yet.</p>
+            )}
+          </section>
         </main>
       </div>
     );
@@ -260,6 +288,34 @@ export default function PaymentMethods() {
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
              </div>
           </div>
+        </section>
+
+        {/* Payment History */}
+        <section className="pb-4">
+          <div className="flex items-center gap-2 mb-3 px-2">
+            <History className="w-5 h-5 text-primary" />
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Payment History</h2>
+          </div>
+          {transactions && transactions.filter(tx => tx.userId === currentUser?.id).length > 0 ? (
+            <div className="bg-card rounded-2xl border border-border/50 divide-y divide-border/30 overflow-hidden shadow-sm">
+              {transactions.filter(tx => tx.userId === currentUser?.id).map((tx, idx) => (
+                <div key={idx} className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-sm">{tx.title || 'Service Payment'}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(tx.timestamp).toLocaleDateString()} • Method: {tx.paymentMethod}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-extrabold text-sm text-slate-800">Rs. {tx.amount}</p>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-green-100 text-green-700">
+                      Paid
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-6 bg-card border border-dashed rounded-2xl">No payments made yet.</p>
+          )}
         </section>
 
         <div className="bg-green-50 border border-green-100 p-4 rounded-2xl flex items-start gap-3">

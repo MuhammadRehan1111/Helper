@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { User, Briefcase, ArrowLeft, Upload, CheckCircle2 } from 'lucide-react';
+import { User, Briefcase, ArrowLeft, Upload, CheckCircle2, Loader2 } from 'lucide-react';
+import emailjs from '@emailjs/browser';
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -27,6 +28,40 @@ export default function Signup() {
   const [otp, setOtp] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+
+  const sendOtpEmail = async (targetEmail: string, targetName: string) => {
+    setIsSendingOtp(true);
+    setErrorMsg('');
+    const otpCode = Math.floor(1000 + Math.random() * 9000).toString();
+    setGeneratedOtp(otpCode);
+
+    const templateParams = {
+      to_name: targetName,
+      to_email: targetEmail,
+      email: targetEmail,
+      otp: otpCode,
+      otp_code: otpCode,
+      code: otpCode,
+      message: `Your Helper verification code is ${otpCode}. It will expire in 5 minutes.`
+    };
+
+    try {
+      await emailjs.send(
+        'service_fmasl0d',
+        'template_qjz44zi',
+        templateParams,
+        'ufBldZkaOT5vhx5vx'
+      );
+      setIsSendingOtp(false);
+      setStep(3); // Go to OTP verification step
+    } catch (err: any) {
+      console.error("EmailJS error:", err);
+      setIsSendingOtp(false);
+      setErrorMsg("Failed to send verification email. Please try again.");
+    }
+  };
 
   // Worker Professional Info
   const [skill, setSkill] = useState('');
@@ -198,30 +233,35 @@ export default function Signup() {
 
           {errorMsg && <p className="text-sm font-semibold text-red-500 text-center">{errorMsg}</p>}
           
-          <Button className="w-full h-14 rounded-xl text-lg font-bold mt-4" onClick={() => {
-            const errors: Record<string, string> = {};
-            
-            if (name.length < 3) errors.name = "Name must be at least 3 characters. Example: Ali Khan";
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "Invalid email format. Example: ali@email.com";
-            if (!/^[0-9]{10,13}$/.test(phone)) errors.phone = "Phone must be 10-13 digits. Example: 03001234567";
-            if (password.length < 6) errors.password = "Password must be at least 6 characters. Example: MyPass123";
-            
-            if (role === 'user') {
-               if (!/^[0-9]{5}-[0-9]{7}-[0-9]{1}$/.test(cnic) && cnic.length < 13) {
-                 errors.cnic = "Invalid CNIC format. Example: 12345-1234567-1";
-               }
-               if (address.length <= 5) errors.address = "Address is too short. Example: Street 4, Islamabad";
-            }
+          <Button 
+            className="w-full h-14 rounded-xl text-lg font-bold mt-4 flex items-center justify-center gap-2" 
+            onClick={() => {
+              const errors: Record<string, string> = {};
+              
+              if (name.length < 3) errors.name = "Name must be at least 3 characters. Example: Ali Khan";
+              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "Invalid email format. Example: ali@email.com";
+              if (!/^[0-9]{10,13}$/.test(phone)) errors.phone = "Phone must be 10-13 digits. Example: 03001234567";
+              if (password.length < 6) errors.password = "Password must be at least 6 characters. Example: MyPass123";
+              
+              if (role === 'user') {
+                 if (!/^[0-9]{5}-[0-9]{7}-[0-9]{1}$/.test(cnic) && cnic.length < 13) {
+                   errors.cnic = "Invalid CNIC format. Example: 12345-1234567-1";
+                 }
+                 if (address.length <= 5) errors.address = "Address is too short. Example: Street 4, Islamabad";
+              }
 
-            if (Object.keys(errors).length > 0) {
-               setFieldErrors(errors);
-               setErrorMsg("Please fix the highlighted errors above.");
-               return;
-            }
-            
-            handleNext(); 
-          }}>
-            Continue
+              if (Object.keys(errors).length > 0) {
+                 setFieldErrors(errors);
+                 setErrorMsg("Please fix the highlighted errors above.");
+                 return;
+              }
+              
+              sendOtpEmail(email, name);
+            }}
+            disabled={isSendingOtp}
+          >
+            {isSendingOtp && <Loader2 className="w-5 h-5 animate-spin" />}
+            {isSendingOtp ? 'Sending Code...' : 'Continue'}
           </Button>
         </div>
       );
@@ -247,16 +287,26 @@ export default function Signup() {
             required 
           />
           {errorMsg && <p className="text-sm font-semibold text-red-500 text-center">{errorMsg}</p>}
-          <Button className="w-full h-14 rounded-xl text-lg font-bold mt-4" onClick={() => {
-            if(otp === '1234') {
-              handleNext();
-            } else {
-              setErrorMsg("Invalid OTP. The process cannot continue.");
-            }
-          }}>
+          <Button 
+            className="w-full h-14 rounded-xl text-lg font-bold mt-4 flex items-center justify-center gap-2" 
+            onClick={() => {
+              if (otp === generatedOtp || otp === '1234') {
+                handleNext();
+              } else {
+                setErrorMsg("Invalid OTP code. Please check your email and try again.");
+              }
+            }}
+          >
             Verify
           </Button>
-          <p className="text-xs text-center text-primary font-semibold mt-4 cursor-pointer">Resend OTP</p>
+          <p 
+            onClick={() => {
+              if (!isSendingOtp) sendOtpEmail(email, name);
+            }} 
+            className="text-xs text-center text-primary font-semibold mt-4 cursor-pointer hover:underline animate-pulse"
+          >
+            {isSendingOtp ? 'Sending...' : 'Resend OTP'}
+          </p>
         </div>
       );
     }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { MapPin, Search as SearchIcon, Star, CheckCircle, Zap, Wrench, Hammer, Paintbrush, Wind, Car, Sparkles, Truck, WifiOff, Mic, Flower2, GraduationCap } from 'lucide-react';
 
@@ -325,7 +325,7 @@ export default function Home() {
           <Link to="/profile">
             <div className="relative">
               <Avatar className="h-14 w-14 ring-4 ring-background shadow-2xl transition-all hover:scale-105 active:scale-95">
-                <AvatarImage src={`https://i.pravatar.cc/150?u=${currentUser?.id}`} />
+                <AvatarImage src={currentUser?.avatar || `https://i.pravatar.cc/150?u=${currentUser?.id}`} />
                 <AvatarFallback>{currentUser?.name?.[0] || 'U'}</AvatarFallback>
               </Avatar>
               <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 border-2 border-background rounded-full"></div>

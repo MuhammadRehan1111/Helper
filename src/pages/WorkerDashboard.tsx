@@ -29,7 +29,10 @@ export default function WorkerDashboard() {
   };
 
   const myJobs = jobs.filter(j => j.workerId === currentUser?.id);
-  const pendingRequests = myJobs.filter(j => j.status === 'pending').length;
+  const pendingRequests = jobs.filter(j => 
+    j.status === 'pending' && 
+    (j.workerId === currentUser?.id || (workerInfo && j.category === workerInfo.category && (j.workerId === 'system-agent' || !j.workerId || j.workerId === '')))
+  ).length;
   const completedJobs = myJobs.filter(j => j.status === 'completed').length;
   const earnings = myJobs.filter(j => j.status === 'completed').reduce((acc, job) => acc + (job.price || 0), 0);
 

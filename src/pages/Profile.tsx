@@ -1,28 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAppContext } from '@/lib/AppContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useNavigate } from 'react-router-dom';
 import { Settings as SettingsIcon, Shield, CreditCard, HelpCircle, LogOut, ChevronRight, Share2, Star, Heart, MapPin, Calendar, Terminal, Camera } from 'lucide-react';
+import { ref, update } from 'firebase/database';
+import { db } from '@/lib/firebase';
 
 export default function Profile() {
   const { currentUser, setCurrentUser, showToast } = useAppContext();
   const navigate = useNavigate();
 
   const [profilePic, setProfilePic] = useState(currentUser?.avatar || `https://i.pravatar.cc/150?u=${currentUser?.id}`);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLogout = () => {
     setCurrentUser(null);
     navigate('/splash');
   };
 
-  const handlePicChange = () => {
-    const newPic = prompt("Enter Image URL for new profile picture:", profilePic);
-    if (newPic) {
-      setProfilePic(newPic);
-      if (currentUser) {
-        setCurrentUser({ ...currentUser, avatar: newPic });
-      }
-      showToast("Profile picture updated!", "success");
+  const handlePicClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setProfilePic(base64String);
+        if (currentUser) {
+          update(ref(db, `users/${currentUser.id}`), { avatar: base64String });
+          if (currentUser.role === 'worker') {
+            update(ref(db, `workers/${currentUser.id}`), { avatar: base64String });
+          }
+        }
+        showToast("Profile picture updated!", "success");
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -31,7 +46,6 @@ export default function Profile() {
     { icon: CreditCard, label: 'Payments & Billing', action: () => navigate('/payments') },
     { icon: MapPin, label: 'Saved Addresses', action: () => navigate('/addresses') },
     { icon: Heart, label: 'Favorite Helpers', action: () => navigate('/favorites') },
-    { icon: Star, label: `Loyalty Points (${currentUser?.points || 120})`, action: () => showToast("You have 120 loyalty points! Total savings: Rs. 450", "info") },
     { icon: SettingsIcon, label: 'Settings', action: () => navigate('/settings') },
     { icon: HelpCircle, label: 'Help & Support', action: () => navigate('/help') },
   ];
@@ -50,7 +64,14 @@ export default function Profile() {
     <div className="flex flex-col min-h-full bg-background pb-8">
       <div className="px-4 py-8 bg-secondary/30 relative">
         <div className="flex items-center gap-4">
-          <div className="relative group cursor-pointer" onClick={handlePicChange}>
+          <div className="relative group cursor-pointer" onClick={handlePicClick}>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileChange} 
+              className="hidden" 
+              accept="image/*" 
+            />
             <Avatar className="h-20 w-20 border-4 border-background shadow-sm transition-transform group-hover:scale-105 group-active:scale-95">
                <AvatarImage src={profilePic} />
                <AvatarFallback>U</AvatarFallback>
